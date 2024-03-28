@@ -380,6 +380,15 @@ class InspectFilter:
         return inspect.isbuiltin(instance)
 
 
+def _get_members_with_annotated(obj: Any) -> list[tuple[str, Any]]:
+    members = inspect.getmembers(obj)
+    for ann_name, annotation in inspect.get_annotations(obj).items():
+        if get_origin(annotation) is Annotated:
+            member = get_args(annotation)[1]
+            members.append((ann_name, member))
+    return members
+
+
 def wire(  # noqa: C901
     container: Container,
     *,
@@ -396,7 +405,7 @@ def wire(  # noqa: C901
     providers_map = ProvidersMap(container)
 
     for module in modules:
-        for member_name, member in inspect.getmembers(module):
+        for member_name, member in _get_members_with_annotated(module):
             if _inspect_filter.is_excluded(member):
                 continue
 
@@ -407,7 +416,7 @@ def wire(  # noqa: C901
             elif inspect.isclass(member):
                 cls = member
                 try:
-                    cls_members = inspect.getmembers(cls)
+                    cls_members = _get_members_with_annotated(cls)
                 except Exception:  # noqa
                     # Hotfix, see: https://github.com/ets-labs/python-dependency-injector/issues/441
                     continue
@@ -542,6 +551,7 @@ def _patch_attribute(
 
 def _unpatch_attribute(patched: PatchedAttribute) -> None:
     setattr(patched.member, patched.name, patched.marker)
+
 
 def _extract_marker(parameter: inspect.Parameter) -> Union["_Marker", None]:
     if get_origin(parameter.annotation) is Annotated:
